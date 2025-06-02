@@ -26,25 +26,32 @@ public final class CameraPlugin: NSObject, FlutterPlugin {
   /// An internal camera object that manages camera's state and performs camera operations.
   var camera: FLTCam?
 
-  public static func register(with registrar: FlutterPluginRegistrar) {
-    let instance = CameraPlugin(
-      registry: registrar.textures(),
-      messenger: registrar.messenger(),
-      globalAPI: FCPCameraGlobalEventApi(binaryMessenger: registrar.messenger()),
-      deviceDiscoverer: FLTDefaultCameraDeviceDiscoverer(),
-      permissionManager: FLTCameraPermissionManager(
-        permissionService: FLTDefaultPermissionService()),
-      deviceFactory: { name in
-        // TODO(RobertOdrowaz) Implement better error handling and remove non-null assertion
-        FLTDefaultCaptureDevice(device: AVCaptureDevice(uniqueID: name)!)
-      },
-      captureSessionFactory: { FLTDefaultCaptureSession(captureSession: AVCaptureSession()) },
-      captureDeviceInputFactory: FLTDefaultCaptureDeviceInputFactory(),
-      captureSessionQueue: DispatchQueue(label: "io.flutter.camera.captureSessionQueue")
-    )
+public static func register(with registrar: FlutterPluginRegistrar) {
+  let instance = CameraPlugin(
+    registry: registrar.textures(),
+    messenger: registrar.messenger(),
+    globalAPI: FCPCameraGlobalEventApi(binaryMessenger: registrar.messenger()),
+    deviceDiscoverer: FLTDefaultCameraDeviceDiscoverer(),
+    permissionManager: FLTCameraPermissionManager(
+      permissionService: FLTDefaultPermissionService()
+    ),
+    deviceFactory: { name in
+      // 🔄 Safe lookup instead of using private `AVCaptureDevice(uniqueID:)`
+      guard let device = AVCaptureDevice.devices().first(where: { $0.uniqueID == name }) else {
+        fatalError("Device with unique ID \(name) not found.")
+      }
+      return FLTDefaultCaptureDevice(device: device)
+    },
+    captureSessionFactory: {
+      FLTDefaultCaptureSession(captureSession: AVCaptureSession())
+    },
+    captureDeviceInputFactory: FLTDefaultCaptureDeviceInputFactory(),
+    captureSessionQueue: DispatchQueue(label: "io.flutter.camera.captureSessionQueue")
+  )
 
-    SetUpFCPCameraApi(registrar.messenger(), instance)
-  }
+  SetUpFCPCameraApi(registrar.messenger(), instance)
+}
+
 
   init(
     registry: FlutterTextureRegistry,
@@ -142,34 +149,36 @@ extension CameraPlugin: FCPCameraApi {
       let devices = strongSelf.deviceDiscoverer.discoverySession(
         withDeviceTypes: discoveryDevices,
         mediaType: .video,
-        position: .unspecified)
+        position: .unspecified
+      )
 
       var reply: [FCPPlatformCameraDescription] = []
 
-      for device in devices {
-        var lensFacing: FCPPlatformCameraLensDirection
+      for (index, device) in devices.enumerated() {
+        let lensFacing: FCPPlatformCameraLensDirection = {
+          switch device.position {
+          case .back: return .back
+          case .front: return .front
+          case .unspecified, @unknown default: return .external
+          }
+        }()
 
-        switch device.position {
-        case .back:
-          lensFacing = .back
-        case .front:
-          lensFacing = .front
-        case .unspecified:
-          lensFacing = .external
-        @unknown default:
-          lensFacing = .external
-        }
+        // Optional: Mask uniqueID if you want to avoid exposing it
+        let cameraName = "CAM_\(lensFacing.rawValue)_\(index)"
 
         let cameraDescription = FCPPlatformCameraDescription.make(
-          withName: device.uniqueID,
+          withName: device.uniqueID,  // ✅ Or use `cameraName` if privacy masking is needed
           lensDirection: lensFacing
         )
+
         reply.append(cameraDescription)
       }
 
       completion(reply, nil)
     }
   }
+}
+
 
   public func createCamera(
     withName cameraName: String,
