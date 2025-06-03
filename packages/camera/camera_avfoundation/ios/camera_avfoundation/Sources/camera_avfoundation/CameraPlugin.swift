@@ -149,36 +149,34 @@ extension CameraPlugin: FCPCameraApi {
       let devices = strongSelf.deviceDiscoverer.discoverySession(
         withDeviceTypes: discoveryDevices,
         mediaType: .video,
-        position: .unspecified
-      )
+        position: .unspecified)
 
       var reply: [FCPPlatformCameraDescription] = []
 
-      for (index, device) in devices.enumerated() {
-        let lensFacing: FCPPlatformCameraLensDirection = {
-          switch device.position {
-          case .back: return .back
-          case .front: return .front
-          case .unspecified, @unknown default: return .external
-          }
-        }()
+      for device in devices {
+        var lensFacing: FCPPlatformCameraLensDirection
 
-        // Optional: Mask uniqueID if you want to avoid exposing it
-        let cameraName = "CAM_\(lensFacing.rawValue)_\(index)"
+        switch device.position {
+        case .back:
+          lensFacing = .back
+        case .front:
+          lensFacing = .front
+        case .unspecified:
+          lensFacing = .external
+        @unknown default:
+          lensFacing = .external
+        }
 
         let cameraDescription = FCPPlatformCameraDescription.make(
-          withName: device.uniqueID,  // ✅ Or use `cameraName` if privacy masking is needed
+          withName: device.uniqueID,
           lensDirection: lensFacing
         )
-
         reply.append(cameraDescription)
       }
 
       completion(reply, nil)
     }
   }
-}
-
 
   public func createCamera(
     withName cameraName: String,
