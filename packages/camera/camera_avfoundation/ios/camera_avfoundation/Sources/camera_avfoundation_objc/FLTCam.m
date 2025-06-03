@@ -324,14 +324,12 @@ NSString *const errorMethod = @"error";
       [self.capturePhotoOutput.availablePhotoCodecTypes containsObject:AVVideoCodecTypeHEVC];
 
   if (_fileFormat == FCPPlatformImageFileFormatHeif && isHEVCCodecAvailable) {
-    settings =
-        [AVCapturePhotoSettings photoSettingsWithFormat:@{AVVideoCodecKey : AVVideoCodecTypeHEVC}];
+    settings = [AVCapturePhotoSettings photoSettingsWithFormat:@{AVVideoCodecKey : AVVideoCodecTypeHEVC}];
     extension = @"heif";
   } else {
     extension = @"jpg";
   }
 
-  // If the flash is in torch mode, no capture-level flash setting is needed.
   if (self.flashMode != FCPPlatformFlashModeTorch) {
     [settings setFlashMode:FCPGetAVCaptureFlashModeForPigeonFlashMode(self.flashMode)];
   }
@@ -346,6 +344,7 @@ NSString *const errorMethod = @"error";
   }
 
   __weak typeof(self) weakSelf = self;
+  NSUUID *photoUUID = [NSUUID UUID];
   FLTSavePhotoDelegate *savePhotoDelegate = [[FLTSavePhotoDelegate alloc]
            initWithPath:path
                 ioQueue:self.photoIOQueue
@@ -353,10 +352,9 @@ NSString *const errorMethod = @"error";
         typeof(self) strongSelf = weakSelf;
         if (!strongSelf) return;
         dispatch_async(strongSelf.captureSessionQueue, ^{
-          // cannot use the outter `strongSelf`
           typeof(self) strongSelf = weakSelf;
           if (!strongSelf) return;
-          [strongSelf.inProgressSavePhotoDelegates removeObjectForKey:@(settings.uniqueID)];
+          [strongSelf.inProgressSavePhotoDelegates removeObjectForKey:photoUUID.UUIDString];
         });
 
         if (error) {
@@ -369,7 +367,8 @@ NSString *const errorMethod = @"error";
 
   NSAssert(dispatch_get_specific(FLTCaptureSessionQueueSpecific),
            @"save photo delegate references must be updated on the capture session queue");
-  self.inProgressSavePhotoDelegates[@(settings.uniqueID)] = savePhotoDelegate;
+
+  self.inProgressSavePhotoDelegates[photoUUID.UUIDString] = savePhotoDelegate;
   [self.capturePhotoOutput capturePhotoWithSettings:settings delegate:savePhotoDelegate];
 }
 
